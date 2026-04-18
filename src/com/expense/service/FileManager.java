@@ -61,16 +61,31 @@ public class FileManager {
     }
 
     public static AppState loadAppState() {
+        // Try loading from DB first!
+        AppState dbState = DatabaseManager.loadAppState();
+        if (dbState != null && !dbState.users.isEmpty()) {
+            return dbState;
+        }
+
+        // Fallback to file based loading
         File f = new File(DATA_FILE);
         if (!f.exists()) return new AppState();
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f))) {
             Object obj = ois.readObject();
-            if (obj instanceof AppState s) return s;
+            if (obj instanceof AppState s) {
+                // If loaded from file, save it to DB immediately so it migrates
+                DatabaseManager.saveAppState(s);
+                return s;
+            }
         } catch (Exception ignored) {}
         return new AppState();
     }
 
     public static void saveAppState(AppState state) {
+        // Save to Database
+        DatabaseManager.saveAppState(state);
+
+        // Also save to binary file as backup
         try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
             oos.writeObject(state);
         } catch (Exception e) {

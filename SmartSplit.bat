@@ -4,7 +4,7 @@ set "JAVAC=%JAVA_HOME%\bin\javac.exe"
 set "JAVA=%JAVA_HOME%\bin\java.exe"
 
 echo 🚀 Compiling SmartSplit...
-"%JAVAC%" -d "out\production\ExpenseSharingSystem" src\com\expense\model\*.java src\com\expense\service\*.java src\com\expense\gui\*.java
+"%JAVAC%" -cp "lib\*" -d "out\production\ExpenseSharingSystem" src\com\expense\model\*.java src\com\expense\service\*.java src\com\expense\gui\*.java
 
 if %ERRORLEVEL% NEQ 0 (
     echo ❌ Compilation failed!
@@ -14,4 +14,4 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo ✅ Compilation successful.
 echo 🏃 Starting SmartSplit...
-start "" "%JAVA%" -cp "out\production\ExpenseSharingSystem" com.expense.gui.SmartSplitApp
+start "" "%JAVA%" -cp "out\production\ExpenseSharingSystem;lib\*" com.expense.gui.SmartSplitApp
