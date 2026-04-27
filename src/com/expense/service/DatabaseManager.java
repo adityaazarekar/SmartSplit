@@ -171,10 +171,10 @@ public class DatabaseManager {
                                 int localId = uRs.getInt("local_id");
                                 String name = uRs.getString("name");
                                 User u = new User(localId, name);
-                                u.setProfileImagePath(uRs.getString("profile_image_path"));
-                                
-                                // Color logic could go here if we bypassed original constructor
-                                // u.profileColor = new Color(uRs.getInt("profile_color")); // (optional reflection inject if strictly needed, but ID determines color usually)
+                                String imgPath = uRs.getString("profile_image_path");
+                                if (imgPath != null && !imgPath.isBlank()) {
+                                    u.setProfileImagePath(imgPath);
+                                }
                                 
                                 int dbId = uRs.getInt("id");
                                 dbIdToUserMap.put(dbId, u);

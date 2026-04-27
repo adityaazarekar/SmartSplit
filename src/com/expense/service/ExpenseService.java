@@ -33,6 +33,15 @@ public class ExpenseService {
             }
         }
 
+        // Subtract already-settled manual settlements so they reduce outstanding debts
+        for (Settlement s : group.getManualSettlements()) {
+            if (s.isSettled()) {
+                // from paid to → from's balance improves (gets credit), to's balance decreases
+                netBalances.merge(s.getFrom(), s.getAmount(), Double::sum);
+                netBalances.merge(s.getTo(), -s.getAmount(), Double::sum);
+            }
+        }
+
         List<double[]> debtAmts = new ArrayList<>();
         List<double[]> creditAmts = new ArrayList<>();
         List<User> debtorUsers = new ArrayList<>();

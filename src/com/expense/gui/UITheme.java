@@ -35,12 +35,36 @@ public class UITheme {
 
     // Category emoji map
     public static String getCategoryEmoji(com.expense.model.Category cat) {
-        return "";
+        if (cat == null) return "";
+        return switch (cat) {
+            case FOOD          -> "🍽️";
+            case TRAVEL        -> "✈️";
+            case RENT          -> "🏠";
+            case UTILITIES     -> "💡";
+            case GROCERIES     -> "🛒";
+            case ENTERTAINMENT -> "🎬";
+            case SHOPPING      -> "🛍️";
+            case TRANSPORT     -> "🚗";
+            case MEDICAL       -> "💊";
+            case PARTY         -> "🎉";
+            case GIFT          -> "🎁";
+            case SUBSCRIPTION  -> "📱";
+            case OTHER         -> "📌";
+        };
     }
 
     // GroupType emoji map
     public static String getGroupEmoji(com.expense.model.GroupType t) {
-        return "";
+        if (t == null) return "";
+        return switch (t) {
+            case ROOMMATES -> "🏠";
+            case TRAVEL    -> "✈️";
+            case OFFICE    -> "💼";
+            case COUPLE    -> "💑";
+            case EVENT     -> "🎉";
+            case STUDENTS  -> "🎓";
+            default        -> "👥";
+        };
     }
 
     // ── Fonts ────────────────────────────────────────────────────────────────
@@ -56,6 +80,46 @@ public class UITheme {
     public static String CURRENCY_SYMBOL = "₹";
     public static String formatAmt(double amount) {
         return CURRENCY_SYMBOL + String.format("%,.0f", amount);
+    }
+
+    /** Background color for category icon circle */
+    public static Color getCategoryBgColor(com.expense.model.Category cat) {
+        if (cat == null) return new Color(0x1F3249);
+        return switch (cat) {
+            case FOOD          -> new Color(0x2D1E10);
+            case TRAVEL        -> new Color(0x0D2233);
+            case RENT          -> new Color(0x1A1A2E);
+            case UTILITIES     -> new Color(0x1E2D10);
+            case GROCERIES     -> new Color(0x102D1E);
+            case ENTERTAINMENT -> new Color(0x1E1028);
+            case SHOPPING      -> new Color(0x2D1028);
+            case TRANSPORT     -> new Color(0x10201E);
+            case PARTY         -> new Color(0x2D2010);
+            case GIFT          -> new Color(0x2D1818);
+            case SUBSCRIPTION  -> new Color(0x10182D);
+            case MEDICAL       -> new Color(0x102020);
+            case OTHER         -> new Color(0x1F3249);
+        };
+    }
+
+    /** Accent color for category (used for text/icon tint) */
+    public static Color getCategoryColor(com.expense.model.Category cat) {
+        if (cat == null) return ACCENT;
+        return switch (cat) {
+            case FOOD          -> new Color(0xFFA657);
+            case TRAVEL        -> new Color(0x58A6FF);
+            case RENT          -> new Color(0xBC8CFF);
+            case UTILITIES     -> new Color(0x3FB950);
+            case GROCERIES     -> new Color(0x39D353);
+            case ENTERTAINMENT -> new Color(0xD2A8FF);
+            case SHOPPING      -> new Color(0xFF9BBA);
+            case TRANSPORT     -> new Color(0x79C0FF);
+            case PARTY         -> new Color(0xE3B341);
+            case GIFT          -> new Color(0xF78166);
+            case SUBSCRIPTION  -> new Color(0x58A6FF);
+            case MEDICAL       -> new Color(0x56D364);
+            case OTHER         -> ACCENT;
+        };
     }
 
     // ── Global L&F setup ───────────────────────────────────────────────────
@@ -104,20 +168,33 @@ public class UITheme {
 
     // ─────────────────────── COMPONENTS ─────────────────────────────────────
 
-    // Modern pill button
+    // Modern pill button with press-scale animation
     public static JButton pillButton(String text, Color bg, int w, int h) {
         JButton btn = new JButton(text) {
             boolean hov = false;
+            boolean pressed = false;
             { addMouseListener(new MouseAdapter() {
-                public void mouseEntered(MouseEvent e) { hov = true; repaint(); }
-                public void mouseExited(MouseEvent e)  { hov = false; repaint(); }
+                public void mouseEntered(MouseEvent e)  { hov = true; repaint(); }
+                public void mouseExited(MouseEvent e)   { hov = false; pressed = false; repaint(); }
+                public void mousePressed(MouseEvent e)  { pressed = true; repaint(); }
+                public void mouseReleased(MouseEvent e) { pressed = false; repaint(); }
             }); }
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                Color c = hov ? bg.brighter() : bg;
-                g2.setColor(c);
+                // Scale-down on press
+                if (pressed) {
+                    double scale = 0.96;
+                    g2.translate(getWidth()*(1-scale)/2, getHeight()*(1-scale)/2);
+                    g2.scale(scale, scale);
+                }
+                Color c = pressed ? bg.darker() : hov ? bg.brighter() : bg;
+                // Gradient fill for depth
+                g2.setPaint(new java.awt.GradientPaint(0, 0, c.brighter(), 0, getHeight(), c));
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
+                // Subtle top highlight
+                g2.setColor(new Color(255, 255, 255, 40));
+                g2.fillRoundRect(2, 2, getWidth()-4, getHeight()/2-2, getHeight()-4, getHeight()-4);
                 g2.setColor(Color.WHITE);
                 g2.setFont(FONT_BUTTON);
                 FontMetrics fm = g2.getFontMetrics();
@@ -139,25 +216,35 @@ public class UITheme {
         return pillButton(text, bg, 160, 42); // increased default size for larger fonts
     }
 
-    // Ghost (outline) button
+    // Ghost (outline) button with glow hover
     public static JButton ghostButton(String text, Color borderColor) {
         JButton btn = new JButton(text) {
             boolean hov = false;
+            boolean pressed = false;
             { addMouseListener(new MouseAdapter() {
-                public void mouseEntered(MouseEvent e) { hov = true; repaint(); }
-                public void mouseExited(MouseEvent e)  { hov = false; repaint(); }
+                public void mouseEntered(MouseEvent e)  { hov = true; repaint(); }
+                public void mouseExited(MouseEvent e)   { hov = false; pressed = false; repaint(); }
+                public void mousePressed(MouseEvent e)  { pressed = true; repaint(); }
+                public void mouseReleased(MouseEvent e) { pressed = false; repaint(); }
             }); }
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                if (hov) { g2.setColor(new Color(borderColor.getRed(), borderColor.getGreen(), borderColor.getBlue(), 30)); g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight()); }
-                g2.setColor(borderColor);
+                if (pressed) {
+                    g2.setColor(new Color(borderColor.getRed(), borderColor.getGreen(), borderColor.getBlue(), 60));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
+                } else if (hov) {
+                    g2.setColor(new Color(borderColor.getRed(), borderColor.getGreen(), borderColor.getBlue(), 25));
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), getHeight(), getHeight());
+                }
+                g2.setColor(hov ? borderColor.brighter() : borderColor);
                 g2.setStroke(new BasicStroke(1.5f));
                 g2.drawRoundRect(1, 1, getWidth()-2, getHeight()-2, getHeight(), getHeight());
                 g2.setFont(FONT_BUTTON);
                 FontMetrics fm = g2.getFontMetrics();
                 int tx = (getWidth() - fm.stringWidth(getText())) / 2;
                 int ty = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
+                g2.setColor(hov ? borderColor.brighter() : borderColor);
                 g2.drawString(getText(), tx, ty);
                 g2.dispose();
             }
@@ -353,11 +440,12 @@ public class UITheme {
 
     public static JPanel avatar(com.expense.model.User user, int size) {
         return new JPanel() {
-            { setOpaque(false); setPreferredSize(new Dimension(size, size)); setMinimumSize(new Dimension(size,size)); setMaximumSize(new Dimension(size,size)); }
+            { setOpaque(false); setPreferredSize(new Dimension(size+2, size+2)); setMinimumSize(new Dimension(size+2,size+2)); setMaximumSize(new Dimension(size+2,size+2)); }
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                Shape clip = new Ellipse2D.Float(0, 0, size, size);
+                int off = 1; // offset for ring
+                Shape clip = new java.awt.geom.Ellipse2D.Float(off, off, size, size);
                 g2.setClip(clip);
 
                 String path = user != null ? user.getProfileImagePath() : null;
@@ -366,7 +454,7 @@ public class UITheme {
                     try {
                         BufferedImage img = ImageIO.read(new File(path));
                         if (img != null) {
-                            g2.drawImage(img, 0, 0, size, size, null);
+                            g2.drawImage(img, off, off, size, size, null);
                             painted = true;
                         }
                     } catch (Exception ignored) {}
@@ -375,15 +463,21 @@ public class UITheme {
                     Color c = user != null ? user.getProfileColor() : ACCENT;
                     String init = user != null ? user.getInitial() : "?";
                     g2.setColor(c);
-                    g2.fillOval(0,0,size,size);
+                    g2.fillOval(off, off, size, size);
+                    // Inner gradient highlight
+                    g2.setPaint(new java.awt.GradientPaint(off, off, new Color(255,255,255,60), off, off+size/2, new Color(255,255,255,0)));
+                    g2.fillOval(off, off, size, size);
                     g2.setColor(Color.WHITE);
                     g2.setFont(new Font("Segoe UI", Font.BOLD, size/2));
                     FontMetrics fm = g2.getFontMetrics();
-                    g2.drawString(init, (size-fm.stringWidth(init))/2, (size+fm.getAscent()-fm.getDescent())/2);
+                    g2.drawString(init, off+(size-fm.stringWidth(init))/2, off+(size+fm.getAscent()-fm.getDescent())/2);
                 }
                 g2.setClip(null);
-                g2.setColor(new Color(255,255,255,35));
-                g2.drawOval(0,0,size-1,size-1);
+                // Outer ring
+                Color ringColor = painted ? ACCENT : (user != null ? user.getProfileColor().brighter() : ACCENT);
+                g2.setColor(new Color(ringColor.getRed(), ringColor.getGreen(), ringColor.getBlue(), 120));
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.drawOval(off, off, size-1, size-1);
                 g2.dispose();
             }
         };

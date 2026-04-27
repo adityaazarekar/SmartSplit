@@ -92,7 +92,7 @@ public class GroupPanel extends JPanel {
 
         if (group.getBudget() > 0) {
             double pct = group.getTotalSpent() / group.getBudget();
-            JLabel budgetLbl = new JLabel(String.format("%.0f%% of " + UITheme.CURRENCY_SYMBOL + "$1%s budget", pct*100, UITheme.formatAmt(group.getBudget())));
+            JLabel budgetLbl = new JLabel(String.format("%.0f%% of %s budget", pct*100, UITheme.formatAmt(group.getBudget())));
             budgetLbl.setFont(UITheme.FONT_SMALL);
             budgetLbl.setForeground(pct > 0.9 ? UITheme.DANGER : UITheme.ACCENT_GREEN);
             budgetLbl.setAlignmentX(Component.RIGHT_ALIGNMENT);
@@ -240,24 +240,34 @@ public class GroupPanel extends JPanel {
         row.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 72));
 
-        // Left - category icon circle
+        // Left - category icon circle (no emoji - use 2-char abbreviation to avoid emoji boxes)
         JPanel iconCircle = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(0x1F3249));
-                g2.fillOval(0, 0, 42, 42);
-                g2.setFont(UITheme.FONT_BUTTON);
-                String em = exp.getCategory().name().substring(0, 1);
+                Color bgColor = UITheme.getCategoryBgColor(exp.getCategory());
+                Color acColor = UITheme.getCategoryColor(exp.getCategory());
+                // Filled circle with category bg
+                g2.setColor(bgColor);
+                g2.fillOval(0, 0, 44, 44);
+                // Accent ring
+                g2.setColor(new Color(acColor.getRed(), acColor.getGreen(), acColor.getBlue(), 90));
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.drawOval(1, 1, 42, 42);
+                // 2-letter abbreviation
+                String abbr = getCategoryAbbr(exp.getCategory());
+                g2.setFont(new Font("Segoe UI", Font.BOLD, 13));
                 FontMetrics fm = g2.getFontMetrics();
-                g2.drawString(em, (42 - fm.stringWidth(em)) / 2, 30);
+                g2.setColor(acColor);
+                g2.drawString(abbr, (44 - fm.stringWidth(abbr)) / 2, 28);
                 g2.dispose();
             }
         };
         iconCircle.setOpaque(false);
-        iconCircle.setPreferredSize(new Dimension(42, 42));
-        iconCircle.setMinimumSize(new Dimension(42, 42));
-        iconCircle.setMaximumSize(new Dimension(42, 42));
+        iconCircle.setPreferredSize(new Dimension(44, 44));
+        iconCircle.setMinimumSize(new Dimension(44, 44));
+        iconCircle.setMaximumSize(new Dimension(44, 44));
+
 
         // Center - info
         JPanel center = new JPanel();
@@ -281,7 +291,7 @@ public class GroupPanel extends JPanel {
             noteLbl.setForeground(UITheme.TEXT_DIM);
             subRow.add(noteLbl);
         }
-        if (exp.getReceiptImagePath() != null) {
+        if (exp.getReceiptImagePath() != null && !exp.getReceiptImagePath().isBlank()) {
             JButton viewBill = UITheme.ghostButton("View Bill", UITheme.ACCENT);
             viewBill.setPreferredSize(new Dimension(94, 24));
             viewBill.addActionListener(e -> showReceiptPreview(exp));
@@ -379,11 +389,11 @@ public class GroupPanel extends JPanel {
             JButton settleAllBtn = UITheme.pillButton("Mark All Settled", UITheme.ACCENT_GREEN, 240, 42);
             settleAllBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
             settleAllBtn.addActionListener(e -> {
-                settlements.forEach(Settlement::markSettled);
-                settleAllBtn.setText("All Settled");
-                settleAllBtn.setEnabled(false);
+                settlements.forEach(s -> s.markSettled(PaymentMethod.CASH));
+                group.getManualSettlements().addAll(settlements);
                 // Pulse animation on button
                 animatePulse(settleAllBtn, UITheme.ACCENT_GREEN);
+                refresh();
             });
             content.add(settleAllBtn);
         }
@@ -453,10 +463,15 @@ public class GroupPanel extends JPanel {
                 fromLbl.setForeground(UITheme.TEXT_DIM);
                 toLbl.setForeground(UITheme.TEXT_DIM);
                 amt.setForeground(UITheme.ACCENT_GREEN);
-                settleBtn.setText("Settled");
+                settleBtn.setText("Settled ✓");
                 settleBtn.setEnabled(false);
                 animatePulse(row, UITheme.ACCENT_GREEN);
-                showToast(s.getFrom().getName() + " paid " + UITheme.CURRENCY_SYMBOL + "$1" + UITheme.formatAmt(s.getAmount()) + " to " + s.getTo().getName());
+                showToast(s.getFrom().getName() + " paid " + UITheme.formatAmt(s.getAmount()) + " to " + s.getTo().getName());
+                // Add to manual settlements and refresh balances
+                group.addSettlement(s);
+                javax.swing.Timer refreshTimer = new javax.swing.Timer(800, ev -> refresh());
+                refreshTimer.setRepeats(false);
+                refreshTimer.start();
             });
         }
         right.add(settleBtn);
@@ -519,7 +534,7 @@ public class GroupPanel extends JPanel {
         toBox.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         toBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JTextField amtField = UITheme.styledField(UITheme.CURRENCY_SYMBOL + "$1 Amount paid", 416);
+        JTextField amtField = UITheme.styledField(UITheme.CURRENCY_SYMBOL + " Amount paid", 416);
         amtField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
         amtField.setAlignmentX(Component.LEFT_ALIGNMENT);
         UITheme.installAmountValidation(amtField, 9, 2);
@@ -538,7 +553,7 @@ public class GroupPanel extends JPanel {
             Object f = fromBox.getSelectedItem(), t = toBox.getSelectedItem();
             String a = amtField.getText().trim();
             if (f instanceof User fu && t instanceof User tu && !a.isEmpty())
-                preview.setText(fu.getName() + " paid " + tu.getName() + " " + UITheme.CURRENCY_SYMBOL + "$1" + a);
+                preview.setText(fu.getName() + " paid " + tu.getName() + " " + UITheme.CURRENCY_SYMBOL + a);
         };
         fromBox.addActionListener(updatePreview);
         toBox.addActionListener(updatePreview);
@@ -567,7 +582,7 @@ public class GroupPanel extends JPanel {
         root.add(Box.createVerticalStrut(4));
         root.add(toBox);
         root.add(Box.createVerticalStrut(12));
-        root.add(UITheme.sectionLabel("Amount (" + UITheme.CURRENCY_SYMBOL + ")"));
+        root.add(UITheme.sectionLabel("Amount"));
         root.add(Box.createVerticalStrut(4));
         root.add(amtField);
         root.add(Box.createVerticalStrut(12));
@@ -600,7 +615,7 @@ public class GroupPanel extends JPanel {
                 manual.markSettled(selectedMethod);
                 group.addSettlement(manual);
                 dlg.dispose();
-                showToast("Recorded: " + from.getName() + " paid " + to.getName() + " " + UITheme.CURRENCY_SYMBOL + "$1" + UITheme.formatAmt(amount));
+                showToast("Recorded: " + from.getName() + " paid " + to.getName() + " " + UITheme.formatAmt(amount));
                 refresh();
             } catch (NumberFormatException ex) {
                 UITheme.showThemedMessage(dlg, "Validation Error", "Add only numbers in Amount.", true);
@@ -731,14 +746,14 @@ public class GroupPanel extends JPanel {
                 g2.fillArc(cx-size/2, cy-size/2, size, size, start, arc);
                 start += arc;
 
-                // Legend
+                // Legend - no emoji (renders as boxes on Windows)
                 int lx = size + 50, ly = 56 + i*22;
                 if (ly < getHeight()-16) {
                     g2.setColor(PIE_COLORS[i % PIE_COLORS.length]);
                     g2.fillRoundRect(lx, ly, 10, 10, 4, 4);
                     g2.setColor(UITheme.TEXT_MUTED);
                     g2.setFont(UITheme.FONT_SMALL);
-                    g2.drawString(UITheme.getCategoryEmoji(e.getKey()) + " " + e.getKey().getDisplayName()
+                    g2.drawString(e.getKey().getDisplayName()
                         + "  " + String.format("%.0f%%", e.getValue()/total*100), lx+16, ly+10);
                 }
                 i++;
@@ -818,7 +833,7 @@ public class GroupPanel extends JPanel {
                 g2.setColor(UITheme.TEXT);
                 g2.setFont(UITheme.FONT_SMALL);
                 FontMetrics fm = g2.getFontMetrics();
-                String val = UITheme.CURRENCY_SYMBOL + "$1"+fmtI(e.getValue());
+                String val = UITheme.CURRENCY_SYMBOL + fmtI(e.getValue());
                 g2.drawString(val, x+(barW-fm.stringWidth(val))/2, y-6);
 
                 // Name
@@ -848,43 +863,124 @@ public class GroupPanel extends JPanel {
             super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+
+            // Card background
             g2.setColor(UITheme.BG_CARD);
             g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
             g2.setColor(UITheme.BORDER);
+            g2.setStroke(new BasicStroke(1f));
             g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 16, 16);
 
             g2.setFont(UITheme.FONT_SUBHEAD);
             g2.setColor(UITheme.TEXT);
             g2.drawString("Spending Trend", 20, 34);
+
             if (points.isEmpty()) {
                 g2.setColor(UITheme.TEXT_DIM);
                 g2.setFont(UITheme.FONT_BODY);
-                g2.drawString("No trend data yet", 20, 66);
+                g2.drawString("No expenses yet", 20, 66);
                 g2.dispose();
                 return;
             }
-            int x0 = 40, y0 = getHeight()-40, w = getWidth()-70, h = getHeight()-95;
-            double max = points.stream().mapToDouble(Map.Entry::getValue).max().orElse(1);
-            g2.setColor(UITheme.BORDER);
-            g2.drawLine(x0, y0, x0 + w, y0);
-            g2.drawLine(x0, y0 - h, x0, y0);
 
-            int prevX = -1, prevY = -1;
-            for (int i = 0; i < points.size(); i++) {
-                int x = x0 + (int) ((i * 1.0 / Math.max(1, points.size()-1)) * w);
-                int y = y0 - (int) ((points.get(i).getValue() / max) * h);
-                g2.setColor(UITheme.ACCENT);
-                g2.fillOval(x-4, y-4, 8, 8);
-                if (prevX != -1) {
-                    g2.setStroke(new BasicStroke(2f));
-                    g2.drawLine(prevX, prevY, x, y);
-                }
-                prevX = x; prevY = y;
-            }
-            g2.setColor(UITheme.TEXT_MUTED);
+            int padL = 54, padR = 20, padTop = 50, padBot = 44;
+            int chartW = getWidth() - padL - padR;
+            int chartH = getHeight() - padTop - padBot;
+            int x0 = padL, y0 = padTop + chartH;
+
+            double max = points.stream().mapToDouble(Map.Entry::getValue).max().orElse(1);
+            if (max == 0) max = 1;
+
+            // Grid lines + Y-axis labels
+            g2.setStroke(new BasicStroke(0.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 0, new float[]{4}, 0));
             g2.setFont(UITheme.FONT_SMALL);
-            g2.drawString("Recent spending movement", x0, getHeight()-12);
+            for (int gr = 0; gr <= 4; gr++) {
+                int gy = y0 - (int)(chartH * gr / 4.0);
+                g2.setColor(UITheme.BORDER);
+                g2.drawLine(x0, gy, x0 + chartW, gy);
+                g2.setColor(UITheme.TEXT_DIM);
+                String lbl = UITheme.CURRENCY_SYMBOL + fmtShort(max * gr / 4.0);
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(lbl, x0 - fm.stringWidth(lbl) - 4, gy + 4);
+            }
+
+            // Compute point coords
+            int n = points.size();
+            int[] xs = new int[n], ys = new int[n];
+            for (int i = 0; i < n; i++) {
+                xs[i] = x0 + (n == 1 ? chartW/2 : (int)(i * 1.0 / (n-1) * chartW));
+                ys[i] = y0 - (int)(points.get(i).getValue() / max * chartH);
+            }
+
+            // Gradient fill under line
+            if (n > 1) {
+                java.awt.Polygon poly = new java.awt.Polygon();
+                poly.addPoint(xs[0], y0);
+                for (int i = 0; i < n; i++) poly.addPoint(xs[i], ys[i]);
+                poly.addPoint(xs[n-1], y0);
+                g2.setPaint(new java.awt.GradientPaint(0, padTop, new Color(UITheme.ACCENT.getRed(), UITheme.ACCENT.getGreen(), UITheme.ACCENT.getBlue(), 60), 0, y0, new Color(0,0,0,0)));
+                g2.fillPolygon(poly);
+            }
+
+            // Line
+            g2.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            g2.setColor(UITheme.ACCENT);
+            if (n == 1) {
+                // Single point: draw a horizontal dashed line
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL, 0, new float[]{8, 4}, 0));
+                g2.drawLine(x0, ys[0], x0 + chartW, ys[0]);
+            } else {
+                for (int i = 1; i < n; i++) {
+                    g2.drawLine(xs[i-1], ys[i-1], xs[i], ys[i]);
+                }
+            }
+
+            // Dots + date labels
+            g2.setStroke(new BasicStroke(1f));
+            for (int i = 0; i < n; i++) {
+                // Dot
+                g2.setColor(UITheme.BG_CARD);
+                g2.fillOval(xs[i]-5, ys[i]-5, 10, 10);
+                g2.setColor(UITheme.ACCENT);
+                g2.setStroke(new BasicStroke(2f));
+                g2.drawOval(xs[i]-5, ys[i]-5, 10, 10);
+                g2.setStroke(new BasicStroke(1f));
+
+                // Value label above dot
+                g2.setFont(UITheme.FONT_SMALL);
+                g2.setColor(UITheme.TEXT);
+                String valLbl = UITheme.CURRENCY_SYMBOL + fmtShort(points.get(i).getValue());
+                FontMetrics fm = g2.getFontMetrics();
+                int vx = xs[i] - fm.stringWidth(valLbl)/2;
+                if (vx < x0) vx = x0;
+                if (vx + fm.stringWidth(valLbl) > x0 + chartW) vx = x0 + chartW - fm.stringWidth(valLbl);
+                g2.drawString(valLbl, vx, ys[i] - 10);
+
+                // Date label below axis (every 2nd if crowded)
+                if (n <= 8 || i % 2 == 0) {
+                    String date = points.get(i).getKey();
+                    // Show as MM/DD
+                    if (date.length() >= 10) date = date.substring(5).replace("-", "/");
+                    g2.setColor(UITheme.TEXT_DIM);
+                    int dx = xs[i] - fm.stringWidth(date)/2;
+                    if (dx < x0) dx = x0;
+                    g2.drawString(date, dx, y0 + 18);
+                }
+            }
+
+            // Bottom label
+            g2.setFont(UITheme.FONT_SMALL);
+            g2.setColor(UITheme.TEXT_DIM);
+            String sub = n == 1 ? "Only 1 data point — add more expenses on different dates" : "Daily spending over time";
+            g2.drawString(sub, x0, y0 + 36);
+
             g2.dispose();
+        }
+        private String fmtShort(double v) {
+            if (v >= 100000) return String.format("%.0fL", v/100000);
+            if (v >= 1000)   return String.format("%.0fK", v/1000);
+            return String.format("%.0f", v);
         }
     }
 
@@ -932,7 +1028,7 @@ public class GroupPanel extends JPanel {
             rows[rowIndex++] = new Object[]{
                 ex.getCategory().name().substring(0, 1),
                 "Expense",
-                ex.getTitle(), UITheme.CURRENCY_SYMBOL + "$1"+UITheme.formatAmt(ex.getAmount()),
+                ex.getTitle(), UITheme.formatAmt(ex.getAmount()),
                 ex.getCategory().getDisplayName(),
                 ex.getPaidBy().getName(),
                 ex.getDateTime().toLocalDate().toString(),
@@ -1134,7 +1230,7 @@ public class GroupPanel extends JPanel {
         title.setForeground(UITheme.TEXT);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JTextField amtField = UITheme.styledField(UITheme.CURRENCY_SYMBOL + "$1 Amount", 360);
+        JTextField amtField = UITheme.styledField(UITheme.CURRENCY_SYMBOL + " Amount", 360);
         amtField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
         amtField.setAlignmentX(Component.LEFT_ALIGNMENT);
         UITheme.installAmountValidation(amtField, 9, 2);
@@ -1162,7 +1258,7 @@ public class GroupPanel extends JPanel {
 
         addBtn.addActionListener(e -> {
             try {
-                double amt = Double.parseDouble(amtField.getText().trim().replace(UITheme.CURRENCY_SYMBOL + "$1","").trim());
+                double amt = Double.parseDouble(amtField.getText().trim().replace(UITheme.CURRENCY_SYMBOL, "").trim());
                 double each = amt / group.getMembers().size();
                 Map<User, Double> split = new LinkedHashMap<>();
                 for (User u : group.getMembers()) split.put(u, each);
@@ -1403,21 +1499,81 @@ public class GroupPanel extends JPanel {
         edit.addActionListener(e -> {
             User selected = list.getSelectedValue();
             if (selected == null) return;
-            JTextField nameField = UITheme.styledField("Name", 300);
+
+            // Proper themed edit dialog
+            JDialog editDlg = new JDialog(dlg, "Edit Member", true);
+            editDlg.getContentPane().setBackground(UITheme.BG_MEDIUM);
+            editDlg.setSize(420, 320);
+            editDlg.setLocationRelativeTo(dlg);
+            editDlg.setResizable(false);
+
+            JPanel ep = new JPanel();
+            ep.setOpaque(false);
+            ep.setLayout(new BoxLayout(ep, BoxLayout.Y_AXIS));
+            ep.setBorder(BorderFactory.createEmptyBorder(20, 24, 20, 24));
+
+            JLabel eTitle = new JLabel("Edit: " + selected.getName());
+            eTitle.setFont(UITheme.FONT_SUBHEAD);
+            eTitle.setForeground(UITheme.TEXT);
+            eTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JTextField nameField = UITheme.styledField("Name", 360);
             nameField.setText(selected.getName());
-            JTextField photoField = UITheme.styledField("Photo path", 300);
+            nameField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+            nameField.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JTextField photoField = UITheme.styledField("Photo path", 360);
             photoField.setText(selected.getProfileImagePath() == null ? "" : selected.getProfileImagePath());
-            JPanel p = new JPanel();
-            p.setOpaque(false);
-            p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
-            p.add(nameField); p.add(Box.createVerticalStrut(8)); p.add(photoField);
-            int ok = JOptionPane.showConfirmDialog(dlg, p, "Edit member", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-            if (ok == JOptionPane.OK_OPTION) {
-                selected.setName(nameField.getText().trim());
-                selected.setProfileImagePath(photoField.getText().trim().isEmpty() ? null : photoField.getText().trim());
+            photoField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+            photoField.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JButton browseBtn = UITheme.ghostButton("Browse Photo", UITheme.ACCENT);
+            browseBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+            browseBtn.addActionListener(ev -> {
+                javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
+                fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Images", "png", "jpg", "jpeg", "webp", "bmp"));
+                if (fc.showOpenDialog(editDlg) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                    photoField.setText(fc.getSelectedFile().getAbsolutePath());
+                }
+            });
+
+            JButton saveBtn = UITheme.pillButton("Save", UITheme.ACCENT_GREEN, 120, 38);
+            saveBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+            saveBtn.addActionListener(ev -> {
+                String nm = nameField.getText().trim();
+                if (!nm.isEmpty()) selected.setName(nm);
+                String ph = photoField.getText().trim();
+                selected.setProfileImagePath(ph.isEmpty() ? null : ph);
+                editDlg.dispose();
                 list.repaint();
                 refresh();
-            }
+            });
+
+            JButton cancelBtn = UITheme.ghostButton("Cancel", UITheme.TEXT_MUTED);
+            cancelBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+            cancelBtn.addActionListener(ev -> editDlg.dispose());
+
+            ep.add(eTitle);
+            ep.add(Box.createVerticalStrut(14));
+            ep.add(UITheme.sectionLabel("Name"));
+            ep.add(Box.createVerticalStrut(4));
+            ep.add(nameField);
+            ep.add(Box.createVerticalStrut(10));
+            ep.add(UITheme.sectionLabel("Profile Photo"));
+            ep.add(Box.createVerticalStrut(4));
+            ep.add(photoField);
+            ep.add(Box.createVerticalStrut(6));
+            ep.add(browseBtn);
+            ep.add(Box.createVerticalStrut(14));
+            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+            btnRow.setOpaque(false);
+            btnRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            btnRow.add(saveBtn);
+            btnRow.add(cancelBtn);
+            ep.add(btnRow);
+
+            editDlg.add(ep);
+            editDlg.setVisible(true);
         });
 
         del.addActionListener(e -> {
@@ -1454,7 +1610,7 @@ public class GroupPanel extends JPanel {
         title.setForeground(UITheme.TEXT);
         title.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JLabel sub = new JLabel("Pay " + UITheme.CURRENCY_SYMBOL + "$1" + UITheme.formatAmt(amount) + " from " + from.getName() + " to " + to.getName());
+        JLabel sub = new JLabel("Pay " + UITheme.formatAmt(amount) + " from " + from.getName() + " to " + to.getName());
         sub.setFont(UITheme.FONT_SMALL);
         sub.setForeground(UITheme.TEXT_MUTED);
         sub.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1554,42 +1710,106 @@ public class GroupPanel extends JPanel {
     private void showToast(String msg) {
         JDialog toast = new JDialog(app, false);
         toast.setUndecorated(true);
-        toast.setBackground(new Color(0,0,0,0));
-        JLabel l = new JLabel("  " + msg + "  ");
+        toast.setBackground(new Color(0, 0, 0, 0));
+
+        JPanel panel = new JPanel() {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(0x2D333B));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(UITheme.ACCENT_GREEN);
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 16, 16);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        panel.setOpaque(false);
+        panel.setLayout(new FlowLayout(FlowLayout.LEFT, 14, 10));
+
+        JLabel icon = new JLabel("✓");
+        icon.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        icon.setForeground(UITheme.ACCENT_GREEN);
+
+        JLabel l = new JLabel(msg);
         l.setFont(UITheme.FONT_BODY);
         l.setForeground(UITheme.TEXT);
-        l.setOpaque(true);
-        l.setBackground(UITheme.BG_CARD_HOVER);
-        l.setBorder(BorderFactory.createLineBorder(UITheme.BORDER, 1, true));
-        toast.add(l);
-        toast.pack();
-        toast.setLocationRelativeTo(app);
-        toast.setLocation(toast.getX(), toast.getY() + 240);
-        toast.setVisible(true);
-        javax.swing.Timer t = new javax.swing.Timer(2200, e -> toast.dispose());
 
-        t.setRepeats(false); t.start();
+        panel.add(icon);
+        panel.add(l);
+        toast.add(panel);
+        toast.pack();
+        toast.setSize(toast.getWidth() + 20, toast.getHeight() + 4);
+
+        // Position near bottom-center
+        Point appLoc = app.getLocationOnScreen();
+        int tx = appLoc.x + (app.getWidth() - toast.getWidth()) / 2;
+        int startY = appLoc.y + app.getHeight() - 30;
+        int endY   = appLoc.y + app.getHeight() - toast.getHeight() - 60;
+        toast.setLocation(tx, startY);
+        toast.setVisible(true);
+
+        // Slide-up animation
+        final int[] curY = {startY};
+        javax.swing.Timer slide = new javax.swing.Timer(10, null);
+        slide.addActionListener(ev -> {
+            curY[0] = Math.max(endY, curY[0] - 6);
+            toast.setLocation(tx, curY[0]);
+            if (curY[0] <= endY) slide.stop();
+        });
+        slide.start();
+
+        // Auto-dismiss
+        javax.swing.Timer dismiss = new javax.swing.Timer(2800, e -> {
+            // Slide back down
+            javax.swing.Timer out = new javax.swing.Timer(10, null);
+            out.addActionListener(ev -> {
+                curY[0] = Math.min(startY, curY[0] + 6);
+                toast.setLocation(tx, curY[0]);
+                if (curY[0] >= startY) { out.stop(); toast.dispose(); }
+            });
+            out.start();
+        });
+        dismiss.setRepeats(false);
+        dismiss.start();
     }
 
     private void showReceiptPreview(Expense exp) {
-        if (exp.getReceiptImagePath() == null || exp.getReceiptImagePath().isBlank()) return;
-        JDialog dlg = new JDialog(app, "Attached Bill", true);
+        String path = exp.getReceiptImagePath();
+        if (path == null || path.isBlank()) return;
+        JDialog dlg = new JDialog(app, "Attached Bill — " + exp.getTitle(), true);
         dlg.getContentPane().setBackground(UITheme.BG_DARK);
-        dlg.setSize(760, 560);
+        dlg.setSize(800, 620);
         dlg.setLocationRelativeTo(app);
+
+        java.io.File imgFile = new java.io.File(path);
+        if (!imgFile.exists() || !imgFile.isFile()) {
+            UITheme.showThemedMessage(app, "Receipt Not Found",
+                "The receipt file could not be found at:\n" + path +
+                "\n\nPlease re-attach the receipt.", true);
+            return;
+        }
         try {
-            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(new java.io.File(exp.getReceiptImagePath()));
-            if (img == null) throw new Exception("Invalid image");
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(imgFile);
+            if (img == null) {
+                UITheme.showThemedMessage(app, "Receipt Preview",
+                    "The file exists but could not be read as an image.\nSupported formats: PNG, JPG, JPEG, BMP, GIF.", true);
+                return;
+            }
             int w = img.getWidth(), h = img.getHeight();
-            double s = Math.min(720.0/w, 500.0/h);
+            double s = Math.min(740.0/w, 540.0/h);
             Image scaled = img.getScaledInstance((int)(w*s), (int)(h*s), Image.SCALE_SMOOTH);
             JLabel pic = new JLabel(new ImageIcon(scaled));
             pic.setHorizontalAlignment(SwingConstants.CENTER);
-            dlg.add(new JScrollPane(pic));
+            JScrollPane sp = new JScrollPane(pic);
+            sp.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+            sp.getViewport().setBackground(UITheme.BG_DARK);
+            dlg.add(sp);
             dlg.setVisible(true);
         } catch (Exception ex) {
-            UITheme.showThemedMessage(app, "Receipt Preview", "Unable to open image: " + exp.getReceiptImagePath(), true);
-            dlg.dispose();
+            UITheme.showThemedMessage(app, "Receipt Preview",
+                "Unable to open image: " + ex.getMessage(), true);
         }
     }
 
@@ -1615,7 +1835,7 @@ public class GroupPanel extends JPanel {
     private String getRentSummary() {
         double rent = group.getExpenses().stream()
             .filter(e -> e.getCategory()==Category.RENT).mapToDouble(Expense::getAmount).sum();
-        return String.format("Total rent paid: " + UITheme.CURRENCY_SYMBOL + "$1%s across %d members (" + UITheme.CURRENCY_SYMBOL + "$1%s/person)",
+        return String.format("Total rent paid: %s across %d members (%s/person)",
             UITheme.formatAmt(rent), group.getMembers().size(), UITheme.formatAmt(rent/Math.max(1,group.getMembers().size())));
     }
 
@@ -1623,8 +1843,8 @@ public class GroupPanel extends JPanel {
         Map<Category, Double> totals = service.getCategoryTotals(group);
         StringBuilder sb = new StringBuilder();
         totals.forEach((cat, amt) ->
-            sb.append(UITheme.getCategoryEmoji(cat)).append(" ").append(cat.getDisplayName())
-              .append(": " + UITheme.CURRENCY_SYMBOL + "$1").append(UITheme.formatAmt(amt)).append("  |  "));
+            sb.append("[").append(getCategoryAbbr(cat)).append("] ").append(cat.getDisplayName())
+              .append(": ").append(UITheme.formatAmt(amt)).append("  |  "));
         return sb.length() > 3 ? sb.substring(0, sb.length()-3) : "No expenses yet";
     }
 
@@ -1632,31 +1852,51 @@ public class GroupPanel extends JPanel {
         double total = group.getExpenses().stream()
             .filter(e -> e.getCategory()==Category.PARTY||e.getCategory()==Category.GIFT||e.getCategory()==Category.ENTERTAINMENT)
             .mapToDouble(Expense::getAmount).sum();
-        return String.format("Total events/gifts spend: " + UITheme.CURRENCY_SYMBOL + "$1%s", UITheme.formatAmt(total));
+        return String.format("Total events/gifts spend: %s", UITheme.formatAmt(total));
     }
 
     private String getTripSummary() {
-        return String.format("Total: " + UITheme.CURRENCY_SYMBOL + "$1%s  |  %d expenses logged  |  %d members", UITheme.formatAmt(group.getTotalSpent()), group.getExpenses().size(), group.getMembers().size());
+        return String.format("Total: %s  |  %d expenses logged  |  %d members", UITheme.formatAmt(group.getTotalSpent()), group.getExpenses().size(), group.getMembers().size());
     }
 
     private String getPerPersonCost() {
-        return String.format("Average cost per person: " + UITheme.CURRENCY_SYMBOL + "$1%s", UITheme.formatAmt(group.getTotalSpent()/Math.max(1,group.getMembers().size())));
+        return String.format("Average cost per person: %s", UITheme.formatAmt(group.getTotalSpent()/Math.max(1,group.getMembers().size())));
     }
 
     private String getCoupleBalance() {
         Map<User, Double> sp = service.getUserSpending(group);
         StringBuilder sb = new StringBuilder();
-        sp.forEach((u, amt) -> sb.append(u.getName()).append(": " + UITheme.CURRENCY_SYMBOL + "$1").append(UITheme.formatAmt(amt)).append("  |  "));
+        sp.forEach((u, amt) -> sb.append(u.getName()).append(": ").append(UITheme.formatAmt(amt)).append("  |  "));
         return sb.length() > 3 ? sb.substring(0, sb.length()-3) : "No expenses yet";
     }
 
     private String getEventBudget() {
         if (group.getBudget() > 0) {
             double rem = group.getBudget() - group.getTotalSpent();
-            return String.format("Budget: " + UITheme.CURRENCY_SYMBOL + "$1%s  |  Spent: " + UITheme.CURRENCY_SYMBOL + "$1%s  |  Remaining: " + UITheme.CURRENCY_SYMBOL + "$1%s",
+            return String.format("Budget: %s  |  Spent: %s  |  Remaining: %s",
                 UITheme.formatAmt(group.getBudget()), UITheme.formatAmt(group.getTotalSpent()), UITheme.formatAmt(rem));
         }
         return "Click 'Track Budget' above to set a budget for this event.";
+    }
+
+    /** Short 2-letter label for category icon circle (no emoji — avoids render boxes) */
+    private static String getCategoryAbbr(Category cat) {
+        if (cat == null) return "??";
+        return switch (cat) {
+            case FOOD          -> "FD";
+            case TRAVEL        -> "TR";
+            case RENT          -> "RT";
+            case UTILITIES     -> "UT";
+            case GROCERIES     -> "GR";
+            case ENTERTAINMENT -> "EN";
+            case SHOPPING      -> "SH";
+            case TRANSPORT     -> "TX";
+            case MEDICAL       -> "MD";
+            case PARTY         -> "PT";
+            case GIFT          -> "GT";
+            case SUBSCRIPTION  -> "SB";
+            case OTHER         -> "OT";
+        };
     }
 
     private JPanel buildEmptyState(String emoji, String title, String sub) {
